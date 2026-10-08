@@ -1,56 +1,14 @@
-import express, { Request, Response } from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { connectToDatabase } from './config/db';
+// Universal server entrypoint
+// Handles both 'node src/server.ts' (Render default start command)
+// and 'npm start' / 'node dist/server.js' without crashing Node.js ESM loader.
+const path = require('path');
+const fs = require('fs');
 
-import productsRouter from './routes/products';
-import categoriesRouter from './routes/categories';
-import brandsRouter from './routes/brands';
-import ordersRouter from './routes/orders';
-import couponsRouter from './routes/coupons';
-import authRouter from './routes/auth';
-import seedRouter from './routes/seed';
+const compiledApp = path.resolve(__dirname, '..', 'dist', 'app.js');
+const localApp = path.resolve(__dirname, 'app');
 
-dotenv.config();
-
-const app = express();
-const PORT = process.env.PORT || 5000;
-
-// Middleware
-app.use(
-  cors({
-    origin: '*',
-    credentials: true,
-  })
-);
-app.use(express.json());
-
-// Health Check
-app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'online',
-    service: 'Kochuvila Agencies REST API Backend',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// API Routes
-app.use('/api/products', productsRouter);
-app.use('/api/categories', categoriesRouter);
-app.use('/api/brands', brandsRouter);
-app.use('/api/orders', ordersRouter);
-app.use('/api/coupons', couponsRouter);
-app.use('/api/auth', authRouter);
-app.use('/api/seed', seedRouter);
-
-// Start server
-async function startServer() {
-  await connectToDatabase();
-  app.listen(PORT, () => {
-    console.log(`🚀 Kochuvila Agencies Backend running at http://localhost:${PORT}`);
-    console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
-    console.log(`📦 Products API: http://localhost:${PORT}/api/products`);
-  });
+if (fs.existsSync(compiledApp)) {
+  require(compiledApp);
+} else {
+  require(localApp);
 }
-
-startServer();
