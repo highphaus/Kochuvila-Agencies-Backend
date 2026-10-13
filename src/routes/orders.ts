@@ -5,6 +5,10 @@ import {
   createOrder,
   updateOrderStatus,
 } from '../services/data-store';
+import {
+  sendOrderConfirmationEmail,
+  sendAdminOrderNotificationEmail,
+} from '../services/email';
 
 const router = Router();
 
@@ -40,6 +44,15 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const created = await createOrder(body);
+
+    // Send emails asynchronously (doesn't block order response)
+    sendOrderConfirmationEmail(created).catch((err) =>
+      console.error('Failed to send customer order confirmation email:', err)
+    );
+    sendAdminOrderNotificationEmail(created).catch((err) =>
+      console.error('Failed to send admin order notification email:', err)
+    );
+
     res.status(201).json(created);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create order', message: (error as Error).message });

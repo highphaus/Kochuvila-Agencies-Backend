@@ -40,6 +40,7 @@ router.get('/', async (req: Request, res: Response) => {
       limit: limit ? Number(limit) : 24,
     });
 
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch products', message: (error as Error).message });
@@ -52,6 +53,7 @@ router.get('/:slug', async (req: Request, res: Response) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
+    res.setHeader('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=300');
     res.json(product);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch product', message: (error as Error).message });

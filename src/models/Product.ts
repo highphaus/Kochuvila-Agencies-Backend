@@ -78,5 +78,13 @@ const ProductSchema = new Schema<IProductDocument>(
   { timestamps: true }
 );
 
+// High-performance compound indexes for frequently queried filters
+ProductSchema.index({ isPublished: 1, category: 1, subcategory: 1 });
+ProductSchema.index({ isPublished: 1, isFeatured: 1, createdAt: -1 });
+ProductSchema.index({ isPublished: 1, isDeal: 1, createdAt: -1 });
+ProductSchema.index({ isPublished: 1, price: 1 });
+ProductSchema.index({ name: 'text', brand: 'text', description: 'text' });
+
 export const ProductModel: Model<IProductDocument> =
   mongoose.models.Product || mongoose.model<IProductDocument>('Product', ProductSchema);
+

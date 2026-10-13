@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticateUser } from '../services/data-store';
 import jwt from 'jsonwebtoken';
+import { sendOtpEmail, sendWelcomeEmail } from '../services/email';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'kochuvila_super_secure_jwt_secret_key_retail_2026_dev';
@@ -85,6 +86,11 @@ router.post('/signup', async (req: Request, res: Response) => {
       { expiresIn: '7d' }
     );
 
+    // Send welcome email asynchronously
+    sendWelcomeEmail(cleanEmail, newUser.name).catch((err) =>
+      console.error('Failed to send welcome email:', err)
+    );
+
     res.status(201).json({
       success: true,
       token,
@@ -114,6 +120,11 @@ router.post('/send-otp', async (req: Request, res: Response) => {
       purpose: 'login',
     });
 
+    // Send OTP email via Nodemailer
+    sendOtpEmail(cleanEmail, otp, 'login').catch((err) =>
+      console.error('Failed to send login OTP email:', err)
+    );
+
     res.json({
       success: true,
       message: `OTP sent successfully to ${cleanEmail}`,
@@ -130,7 +141,7 @@ router.post('/send-otp', async (req: Request, res: Response) => {
  */
 router.post('/verify-otp', async (req: Request, res: Response) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp, name } = req.body;
     if (!email || !otp) {
       return res.status(400).json({ error: 'Email and OTP are required' });
     }
@@ -148,14 +159,19 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
     // Clear OTP after successful use
     otpStore.delete(cleanEmail);
 
+    const userName = name && name.trim() ? name.trim() : (cleanEmail.split('@')[0].toUpperCase() || 'Kerala Customer');
     const user = {
       _id: `usr-${Date.now()}`,
-      name: cleanEmail.split('@')[0].toUpperCase() || 'Kerala Customer',
+      name: userName,
       email: cleanEmail,
       role: cleanEmail.includes('admin') ? ('admin' as const) : ('customer' as const),
       phone: '+91 94470 12345',
       addresses: [],
     };
+
+    if (name) {
+      sendWelcomeEmail(cleanEmail, userName).catch(() => {});
+    }
 
     const token = jwt.sign(
       {
@@ -196,6 +212,11 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       expiresAt: Date.now() + 10 * 60 * 1000,
       purpose: 'recovery',
     });
+
+    // Send password recovery OTP email via Nodemailer
+    sendOtpEmail(cleanEmail, otp, 'recovery').catch((err) =>
+      console.error('Failed to send password recovery OTP email:', err)
+    );
 
     res.json({
       success: true,

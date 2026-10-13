@@ -10,6 +10,8 @@ import ordersRouter from './routes/orders';
 import couponsRouter from './routes/coupons';
 import authRouter from './routes/auth';
 import seedRouter from './routes/seed';
+import contactRouter from './routes/contact';
+import { verifyEmailTransporter } from './services/email';
 
 dotenv.config();
 
@@ -98,14 +100,26 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/coupons', couponsRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/seed', seedRouter);
+app.use('/api/contact', contactRouter);
 
 // Start server
 async function startServer() {
   await connectToDatabase();
+
+  // Verify Nodemailer Email Transporter
+  verifyEmailTransporter().then((res) => {
+    if (res.success) {
+      console.log(`📧 Nodemailer SMTP: Active & Operational (${res.message})`);
+    } else {
+      console.warn(`⚠️ Nodemailer SMTP Warning: ${res.message}`);
+    }
+  });
+
   app.listen(PORT, () => {
     console.log(`🚀 Kochuvila Agencies Backend running at http://localhost:${PORT}`);
     console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
     console.log(`📦 Products API: http://localhost:${PORT}/api/products`);
+    console.log(`📬 Contact & Email API: http://localhost:${PORT}/api/contact`);
   });
 }
 

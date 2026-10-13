@@ -155,7 +155,7 @@ export async function getProducts(filters?: {
 
       if (items && items.length > 0) {
         return {
-          products: JSON.parse(JSON.stringify(items)),
+          products: items as unknown as Product[],
           total,
           totalPages: Math.ceil(total / limit),
         };
