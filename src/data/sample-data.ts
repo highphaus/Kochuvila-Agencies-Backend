@@ -1783,7 +1783,7 @@ export const SAMPLE_PRODUCTS: Product[] = [
     sku: 'FURN-CHR-EXEC-MSH',
     description: 'Designed for 10+ hours of continuous working comfort. Features 2D adjustable lumbar support pad, breathable Korean mesh back, multi-angle synchro-tilt mechanism with lock, and 3D adjustable armrests.',
     images: [
-      'https://images.unsplash.com/photo-1580481077195-c3a821a58875?auto=format&fit=crop&w=1000&q=80',
+      'https://images.unsplash.com/photo-1505797149-43b0069ec26b?auto=format&fit=crop&w=1000&q=80',
     ],
     mrp: 18990,
     price: 12990,
