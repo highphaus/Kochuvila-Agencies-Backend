@@ -71,7 +71,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       name: (name || cleanEmail.split('@')[0]).trim(),
       email: cleanEmail,
       role: 'customer' as const,
-      phone: '+91 94470 12345',
+      phone: '+91 97451 11141',
       addresses: [],
     };
 
@@ -165,7 +165,7 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
       name: userName,
       email: cleanEmail,
       role: cleanEmail.includes('admin') ? ('admin' as const) : ('customer' as const),
-      phone: '+91 94470 12345',
+      phone: '+91 97451 11141',
       addresses: [],
     };
 

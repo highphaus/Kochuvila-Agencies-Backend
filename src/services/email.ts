@@ -109,8 +109,8 @@ function wrapHtmlEmail(title: string, bodyContent: string): string {
         ${bodyContent}
       </div>
       <div class="footer">
-        <p>Kochuvila Agencies, Main Road, Kochuvila Junction, Kerala 695001</p>
-        <p>Helpline: +91 94470 23456 | Email: ${config.smtpUser || 'contact@kochuvilaagencies.com'}</p>
+        <p>Kochuvila Agencies, Near Pangode Junction, Trivandrum 695609 | Kallara 695608</p>
+        <p>Helpline: +91 97451 11141 | Email: ${config.smtpUser || 'kochuvilapgd1141@gmail.com'}</p>
         <p style="margin-top: 8px; color: #94a3b8;">© ${new Date().getFullYear()} Kochuvila Agencies. All rights reserved.</p>
       </div>
     </div>
@@ -245,7 +245,7 @@ export async function sendOrderConfirmationEmail(order: any) {
 
     <div style="margin-top: 28px; text-align: center;">
       <p style="font-size: 13px; color: #64748b;">Need assistance with your delivery or installation schedule?</p>
-      <a href="tel:+919447023456" class="button">Call Showroom Helpline</a>
+      <a href="tel:+919745111141" class="button">Call Showroom Helpline (+91 97451 11141)</a>
     </div>
     `
   );
@@ -371,7 +371,7 @@ export async function sendContactInquiryEmail(inquiry: {
         <strong>Your Message:</strong><br/>
         <em>"${inquiry.message}"</em>
       </div>
-      <p>Need urgent showroom assistance? Feel free to call us directly at <a href="tel:+919447023456">+91 94470 23456</a>.</p>
+      <p>Need urgent showroom assistance? Feel free to call us directly at <a href="tel:+919745111141">+91 97451 11141</a>.</p>
       `
     );
 
