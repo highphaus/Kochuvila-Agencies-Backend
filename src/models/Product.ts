@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export interface IProductDocument extends Document {
+export interface IProductDocument {
+  _id?: string;
   name: string;
   slug: string;
   brand: string;
@@ -37,6 +38,7 @@ export interface IProductDocument extends Document {
 
 const ProductSchema = new Schema<IProductDocument>(
   {
+    _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, unique: true, index: true },
     brand: { type: String, required: true, index: true },

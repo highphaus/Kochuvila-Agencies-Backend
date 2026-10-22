@@ -1,9 +1,10 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export interface IOrderDocument extends Document {
+export interface IOrderDocument {
+  _id?: string;
   orderNumber: string;
   customer: {
-    userId?: mongoose.Types.ObjectId;
+    userId?: string;
     fullName: string;
     email: string;
     phone: string;
@@ -56,9 +57,10 @@ export interface IOrderDocument extends Document {
 
 const OrderSchema = new Schema<IOrderDocument>(
   {
+    _id: { type: String, default: () => `ord-${Date.now()}` },
     orderNumber: { type: String, required: true, unique: true, index: true },
     customer: {
-      userId: { type: Schema.Types.ObjectId, ref: 'User' },
+      userId: { type: String },
       fullName: { type: String, required: true },
       email: { type: String, required: true },
       phone: { type: String, required: true },

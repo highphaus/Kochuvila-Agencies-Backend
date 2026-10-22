@@ -1,4 +1,4 @@
-import { Product, Category, Brand, Order, Coupon, User } from '../types';
+import { Product, Category, Brand, Order, Coupon, User, UserAddress } from '../types';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES, SAMPLE_BRANDS, SAMPLE_COUPONS } from '../data/sample-data';
 import { connectToDatabase } from '../config/db';
 import { ProductModel } from '../models/Product';
@@ -704,39 +704,450 @@ export async function authenticateUser(email: string, password: string): Promise
   return null;
 }
 
+export async function updateUserProfile(
+  identifier: string,
+  updates: { name?: string; phone?: string }
+): Promise<User | null> {
+  const cleanId = identifier.trim();
+  const cleanEmail = cleanId.toLowerCase();
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const updated = await UserModel.findOneAndUpdate(
+        { $or: [{ _id: cleanId }, { email: cleanEmail }] },
+        { $set: updates },
+        { new: true }
+      ).lean();
+      if (updated) {
+        return {
+          _id: updated._id.toString(),
+          name: updated.name,
+          email: updated.email,
+          phone: updated.phone,
+          role: updated.role,
+          addresses: updated.addresses ? JSON.parse(JSON.stringify(updated.addresses)) : [],
+          createdAt: updated.createdAt ? updated.createdAt.toISOString() : undefined,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('DB error updateUserProfile:', (err as Error).message);
+  }
+
+  const memUser = mem.users.find((u) => u._id === cleanId || u.email.toLowerCase() === cleanEmail);
+  if (memUser) {
+    if (updates.name) memUser.name = updates.name.trim();
+    if (updates.phone) memUser.phone = updates.phone.trim();
+    const { passwordHash: _, ...safeUser } = memUser;
+    return safeUser;
+  }
+  return null;
+}
+
+export async function addUserAddress(
+  identifier: string,
+  address: UserAddress
+): Promise<User | null> {
+  const cleanId = identifier.trim();
+  const cleanEmail = cleanId.toLowerCase();
+  const newAddr = {
+    ...address,
+    _id: address._id || `addr-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+  };
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const user = await UserModel.findOne({ $or: [{ _id: cleanId }, { email: cleanEmail }] });
+      if (user) {
+        if (newAddr.isDefault || user.addresses.length === 0) {
+          user.addresses.forEach((a: any) => { a.isDefault = false; });
+          newAddr.isDefault = true;
+        }
+        user.addresses.push(newAddr as any);
+        await user.save();
+        return {
+          _id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          addresses: JSON.parse(JSON.stringify(user.addresses)),
+          createdAt: user.createdAt ? user.createdAt.toISOString() : undefined,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('DB error addUserAddress:', (err as Error).message);
+  }
+
+  const memUser = mem.users.find((u) => u._id === cleanId || u.email.toLowerCase() === cleanEmail);
+  if (memUser) {
+    if (!memUser.addresses) memUser.addresses = [];
+    if (newAddr.isDefault || memUser.addresses.length === 0) {
+      memUser.addresses.forEach((a) => { a.isDefault = false; });
+      newAddr.isDefault = true;
+    }
+    memUser.addresses.push(newAddr);
+    const { passwordHash: _, ...safeUser } = memUser;
+    return safeUser;
+  }
+  return null;
+}
+
+export async function updateUserAddress(
+  identifier: string,
+  addressId: string,
+  addressUpdates: Partial<UserAddress>
+): Promise<User | null> {
+  const cleanId = identifier.trim();
+  const cleanEmail = cleanId.toLowerCase();
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const user = await UserModel.findOne({ $or: [{ _id: cleanId }, { email: cleanEmail }] });
+      if (user) {
+        if (addressUpdates.isDefault) {
+          user.addresses.forEach((a: any) => { a.isDefault = false; });
+        }
+        const target = user.addresses.find((a: any) => a._id?.toString() === addressId);
+        if (target) {
+          Object.assign(target, addressUpdates);
+          await user.save();
+          return {
+            _id: user._id.toString(),
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            addresses: JSON.parse(JSON.stringify(user.addresses)),
+            createdAt: user.createdAt ? user.createdAt.toISOString() : undefined,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('DB error updateUserAddress:', (err as Error).message);
+  }
+
+  const memUser = mem.users.find((u) => u._id === cleanId || u.email.toLowerCase() === cleanEmail);
+  if (memUser && memUser.addresses) {
+    if (addressUpdates.isDefault) {
+      memUser.addresses.forEach((a) => { a.isDefault = false; });
+    }
+    const target = memUser.addresses.find((a) => a._id === addressId);
+    if (target) {
+      Object.assign(target, addressUpdates);
+      const { passwordHash: _, ...safeUser } = memUser;
+      return safeUser;
+    }
+  }
+  return null;
+}
+
+export async function deleteUserAddress(
+  identifier: string,
+  addressId: string
+): Promise<User | null> {
+  const cleanId = identifier.trim();
+  const cleanEmail = cleanId.toLowerCase();
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const user = await UserModel.findOne({ $or: [{ _id: cleanId }, { email: cleanEmail }] });
+      if (user) {
+        user.addresses = user.addresses.filter((a: any) => a._id?.toString() !== addressId) as any;
+        if (user.addresses.length > 0 && !user.addresses.some((a: any) => a.isDefault)) {
+          user.addresses[0].isDefault = true;
+        }
+        await user.save();
+        return {
+          _id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          addresses: JSON.parse(JSON.stringify(user.addresses)),
+          createdAt: user.createdAt ? user.createdAt.toISOString() : undefined,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('DB error deleteUserAddress:', (err as Error).message);
+  }
+
+  const memUser = mem.users.find((u) => u._id === cleanId || u.email.toLowerCase() === cleanEmail);
+  if (memUser && memUser.addresses) {
+    memUser.addresses = memUser.addresses.filter((a) => a._id !== addressId);
+    if (memUser.addresses.length > 0 && !memUser.addresses.some((a) => a.isDefault)) {
+      memUser.addresses[0].isDefault = true;
+    }
+    const { passwordHash: _, ...safeUser } = memUser;
+    return safeUser;
+  }
+  return null;
+}
+
 // SEED DATABASE
 export async function seedDatabase(): Promise<{
   success: boolean;
   message: string;
-  counts: { products: number; categories: number; brands: number; orders: number };
+  counts: { products: number; categories: number; brands: number; orders: number; users: number };
 }> {
+  const customerPasswordHash = await bcrypt.hash('Kochuvila@2026', 10);
+  const adminEmail = (process.env.ADMIN_DEFAULT_EMAIL || 'admin@kochuvila.com').toLowerCase();
+  const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'KochuvilaAdmin@2026';
+  const adminPasswordHash = await bcrypt.hash(adminPassword, 10);
+
+  const sampleUsers = [
+    {
+      _id: 'usr-admin-01',
+      name: 'Kochuvila Administrator',
+      email: adminEmail,
+      passwordHash: adminPasswordHash,
+      role: 'admin' as const,
+      phone: '+91 94470 00000',
+      addresses: [
+        {
+          _id: 'addr-admin-hq',
+          fullName: 'Kochuvila Agencies HQ',
+          phone: '+91 94470 00000',
+          street: 'Kochuvila Buildings, Pangode Junction',
+          landmark: 'Opposite Pangode Police Station',
+          city: 'Pangode',
+          district: 'Thiruvananthapuram',
+          state: 'Kerala',
+          pincode: '695609',
+          isDefault: true,
+        },
+      ],
+    },
+    {
+      _id: 'usr-verified-01',
+      name: 'Kochuvila Customer',
+      email: 'kochuvilapgd1141@gmail.com',
+      passwordHash: customerPasswordHash,
+      role: 'customer' as const,
+      phone: '+91 97451 11141',
+      addresses: [
+        {
+          _id: 'addr-cust-01',
+          fullName: 'Kochuvila Customer',
+          phone: '+91 97451 11141',
+          street: 'Kochuvila Buildings, Pangode Junction',
+          landmark: 'Opposite Pangode Police Station',
+          city: 'Pangode',
+          district: 'Thiruvananthapuram',
+          state: 'Kerala',
+          pincode: '695609',
+          isDefault: true,
+        },
+      ],
+    },
+    {
+      _id: 'usr-demo-customer',
+      name: 'Suresh Kumar',
+      email: 'customer@kochuvila.com',
+      passwordHash: customerPasswordHash,
+      role: 'customer' as const,
+      phone: '+91 98471 23456',
+      addresses: [
+        {
+          _id: 'addr-suresh-01',
+          fullName: 'Suresh Kumar',
+          phone: '+91 98471 23456',
+          street: 'TC 14/2045, Rose Nagar, Medical College P.O.',
+          landmark: 'Near Medical College',
+          city: 'Thiruvananthapuram',
+          district: 'Thiruvananthapuram',
+          state: 'Kerala',
+          pincode: '695011',
+          isDefault: true,
+        },
+      ],
+    },
+  ];
+
+  const sampleOrders: Order[] = [
+    {
+      _id: 'ord-demo-01',
+      orderNumber: 'KCH-2026-9041',
+      customer: {
+        userId: 'usr-demo-customer',
+        fullName: 'Suresh Kumar',
+        email: 'customer@kochuvila.com',
+        phone: '+91 98471 23456',
+        address: {
+          fullName: 'Suresh Kumar',
+          phone: '+91 98471 23456',
+          street: 'TC 14/2045, Rose Nagar, Medical College P.O.',
+          landmark: 'Near Medical College',
+          city: 'Thiruvananthapuram',
+          district: 'Thiruvananthapuram',
+          state: 'Kerala',
+          pincode: '695011',
+        },
+      },
+      items: [
+        {
+          productId: 'prod-app-01',
+          name: 'LG 655L Frost-Free Inverter Side-by-Side Refrigerator',
+          image: 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=1000&q=80',
+          brand: 'LG',
+          price: 79990,
+          mrp: 104990,
+          quantity: 1,
+          sku: 'LG-REF-655-SBS',
+        },
+      ],
+      subtotal: 79990,
+      discount: 2500,
+      couponCode: 'FESTIVE2500',
+      deliveryCharge: 0,
+      totalAmount: 77490,
+      paymentMethod: 'online',
+      paymentStatus: 'paid',
+      orderStatus: 'Shipped',
+      timeline: [
+        {
+          status: 'Order Placed',
+          timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
+          notes: 'Customer placed order online',
+        },
+        {
+          status: 'Confirmed',
+          timestamp: new Date(Date.now() - 86400000).toISOString(),
+          notes: 'Payment verified and inventory allocated',
+        },
+        {
+          status: 'Shipped',
+          timestamp: new Date(Date.now() - 3600000 * 12).toISOString(),
+          notes: 'Dispatched from Trivandrum central warehouse via specialized appliance carrier',
+        },
+      ],
+      createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    },
+    {
+      _id: 'ord-demo-02',
+      orderNumber: 'KCH-2026-8812',
+      customer: {
+        userId: 'usr-verified-01',
+        fullName: 'Kochuvila Customer',
+        email: 'kochuvilapgd1141@gmail.com',
+        phone: '+91 97451 11141',
+        address: {
+          fullName: 'Kochuvila Customer',
+          phone: '+91 97451 11141',
+          street: 'Kochuvila Buildings, Pangode Junction',
+          landmark: 'Opposite Pangode Police Station',
+          city: 'Pangode',
+          district: 'Thiruvananthapuram',
+          state: 'Kerala',
+          pincode: '695609',
+        },
+      },
+      items: [
+        {
+          productId: 'prod-fur-01',
+          name: 'Royal Kerala Solid Teakwood Living Room 3-Seater Sofa',
+          image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1000&q=80',
+          brand: 'Royal Teak',
+          price: 48900,
+          mrp: 65000,
+          quantity: 1,
+          sku: 'FUR-TK-SOFA-01',
+        },
+        {
+          productId: 'prod-app-04',
+          name: 'Sony Bravia 55 inch 4K Ultra HD Smart OLED Google TV',
+          image: 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=1000&q=80',
+          brand: 'Sony',
+          price: 114990,
+          mrp: 149900,
+          quantity: 1,
+          sku: 'SNY-TV-55-OLED',
+        },
+      ],
+      subtotal: 163890,
+      discount: 5000,
+      couponCode: 'FESTIVAL5',
+      deliveryCharge: 0,
+      totalAmount: 158890,
+      paymentMethod: 'online',
+      paymentStatus: 'paid',
+      orderStatus: 'Processing',
+      timeline: [
+        {
+          status: 'Order Placed',
+          timestamp: new Date(Date.now() - 172800000).toISOString(),
+          notes: 'Customer placed order online',
+        },
+        {
+          status: 'Confirmed',
+          timestamp: new Date(Date.now() - 86400000).toISOString(),
+          notes: 'Payment confirmed via UPI',
+        },
+        {
+          status: 'Processing',
+          timestamp: new Date(Date.now() - 3600000).toISOString(),
+          notes: 'Furniture inspected by master carpenter; electronics prepared for white-glove transport',
+        },
+      ],
+      createdAt: new Date(Date.now() - 172800000).toISOString(),
+    },
+  ];
+
   try {
     const conn = await connectToDatabase();
     if (conn) {
+      // 1. Seed Products
       for (const prod of SAMPLE_PRODUCTS) {
-        await ProductModel.findOneAndUpdate({ slug: prod.slug }, prod, { upsert: true });
+        const { _id, ...prodRest } = prod;
+        await ProductModel.findOneAndUpdate(
+          { slug: prod.slug },
+          { $set: prodRest, $setOnInsert: { _id } },
+          { upsert: true, new: true }
+        );
       }
+      // 2. Seed Categories
       for (const cat of SAMPLE_CATEGORIES) {
-        await CategoryModel.findOneAndUpdate({ slug: cat.slug }, cat, { upsert: true });
+        const { _id, ...catRest } = cat;
+        await CategoryModel.findOneAndUpdate(
+          { slug: cat.slug },
+          { $set: catRest, $setOnInsert: { _id } },
+          { upsert: true, new: true }
+        );
       }
+      // 3. Seed Brands
       for (const b of SAMPLE_BRANDS) {
-        await BrandModel.findOneAndUpdate({ slug: b.slug }, b, { upsert: true });
+        const { _id, ...brandRest } = b;
+        await BrandModel.findOneAndUpdate(
+          { slug: b.slug },
+          { $set: brandRest, $setOnInsert: { _id } },
+          { upsert: true, new: true }
+        );
       }
-
-      const adminEmail = (process.env.ADMIN_DEFAULT_EMAIL || 'admin@kochuvila.com').toLowerCase();
-      const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'KochuvilaAdmin@2026';
-      const passwordHash = await bcrypt.hash(adminPassword, 10);
-      await UserModel.findOneAndUpdate(
-        { email: adminEmail },
-        {
-          name: 'Kochuvila Administrator',
-          email: adminEmail,
-          passwordHash,
-          role: 'admin',
-          phone: '+91 94470 00000',
-        },
-        { upsert: true }
-      );
+      // 4. Seed Users
+      for (const u of sampleUsers) {
+        const { _id, ...userRest } = u;
+        await UserModel.findOneAndUpdate(
+          { email: u.email.toLowerCase() },
+          { $set: userRest, $setOnInsert: { _id } },
+          { upsert: true, new: true }
+        );
+      }
+      // 5. Seed Orders
+      for (const ord of sampleOrders) {
+        const { _id, ...orderRest } = ord;
+        await OrderModel.findOneAndUpdate(
+          { orderNumber: ord.orderNumber },
+          { $set: orderRest, $setOnInsert: { _id } },
+          { upsert: true, new: true }
+        );
+      }
     }
   } catch (err) {
     console.warn('DB seed error, memory store refreshed:', (err as Error).message);
@@ -745,16 +1156,19 @@ export async function seedDatabase(): Promise<{
   mem.products = JSON.parse(JSON.stringify(SAMPLE_PRODUCTS));
   mem.categories = JSON.parse(JSON.stringify(SAMPLE_CATEGORIES));
   mem.brands = JSON.parse(JSON.stringify(SAMPLE_BRANDS));
+  mem.orders = JSON.parse(JSON.stringify(sampleOrders));
+  mem.users = JSON.parse(JSON.stringify(sampleUsers));
   mem.isSeeded = true;
 
   return {
     success: true,
-    message: 'Database & memory store successfully seeded with complete retail catalog.',
+    message: 'Database & memory store successfully seeded with complete retail catalog, users, and orders.',
     counts: {
       products: mem.products.length,
       categories: mem.categories.length,
       brands: mem.brands.length,
       orders: mem.orders.length,
+      users: mem.users.length,
     },
   };
 }

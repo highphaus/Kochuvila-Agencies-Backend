@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export interface IUserDocument extends Document {
+export interface IUserDocument {
+  _id?: string;
   name: string;
   email: string;
   passwordHash: string;
@@ -22,6 +23,7 @@ export interface IUserDocument extends Document {
 }
 
 const AddressSchema = new Schema({
+  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
   fullName: { type: String, required: true },
   phone: { type: String, required: true },
   street: { type: String, required: true },
@@ -35,6 +37,7 @@ const AddressSchema = new Schema({
 
 const UserSchema = new Schema<IUserDocument>(
   {
+    _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
     passwordHash: { type: String, required: true },

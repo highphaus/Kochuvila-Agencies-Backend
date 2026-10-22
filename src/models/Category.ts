@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export interface ICategoryDocument extends Document {
+export interface ICategoryDocument {
+  _id?: string;
   name: string;
   slug: string;
   type: 'appliances' | 'furniture';
@@ -13,6 +14,7 @@ export interface ICategoryDocument extends Document {
 
 const CategorySchema = new Schema<ICategoryDocument>(
   {
+    _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
     name: { type: String, required: true },
     slug: { type: String, required: true, unique: true, index: true },
     type: { type: String, enum: ['appliances', 'furniture'], required: true, index: true },

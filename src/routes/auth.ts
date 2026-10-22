@@ -4,6 +4,10 @@ import {
   findUserByEmail,
   createUser,
   updateUserPassword,
+  updateUserProfile,
+  addUserAddress,
+  updateUserAddress,
+  deleteUserAddress,
 } from '../services/data-store';
 import jwt from 'jsonwebtoken';
 import { sendOtpEmail, sendWelcomeEmail } from '../services/email';
@@ -327,6 +331,148 @@ router.get('/me', async (req: Request, res: Response) => {
     res.json({ success: true, user });
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
+/**
+ * Helper to get user email or ID from request
+ */
+function getAuthIdentifier(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const token = authHeader.split(' ')[1];
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId?: string; email?: string };
+      if (decoded.email) return decoded.email;
+      if (decoded.userId) return decoded.userId;
+    } catch {
+      // ignore
+    }
+  }
+  if (req.body && req.body.userEmail) return req.body.userEmail;
+  if (req.body && req.body.email) return req.body.email;
+  return null;
+}
+
+/**
+ * 8. UPDATE USER PROFILE (NAME & PHONE)
+ */
+router.put('/profile', async (req: Request, res: Response) => {
+  try {
+    const identifier = getAuthIdentifier(req);
+    if (!identifier) {
+      return res.status(401).json({ error: 'Authentication required to update profile' });
+    }
+
+    const { name, phone } = req.body;
+    const updated = await updateUserProfile(identifier, { name, phone });
+    if (!updated) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      user: updated,
+      message: 'Profile updated successfully in database',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update profile', message: (error as Error).message });
+  }
+});
+
+/**
+ * 9. ADD DELIVERY ADDRESS
+ */
+router.post('/address', async (req: Request, res: Response) => {
+  try {
+    const identifier = getAuthIdentifier(req);
+    if (!identifier) {
+      return res.status(401).json({ error: 'Authentication required to save address' });
+    }
+
+    const { fullName, phone, street, landmark, city, district, state, pincode, isDefault } = req.body;
+    if (!fullName || !phone || !street || !city || !district || !pincode) {
+      return res.status(400).json({ error: 'Full address details are required' });
+    }
+
+    const updated = await addUserAddress(identifier, {
+      fullName,
+      phone,
+      street,
+      landmark,
+      city,
+      district,
+      state: state || 'Kerala',
+      pincode,
+      isDefault: Boolean(isDefault),
+    });
+
+    if (!updated) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.status(201).json({
+      success: true,
+      user: updated,
+      addresses: updated.addresses,
+      message: 'Address saved to database successfully',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add address', message: (error as Error).message });
+  }
+});
+
+/**
+ * 10. UPDATE DELIVERY ADDRESS
+ */
+router.put('/address/:addressId', async (req: Request, res: Response) => {
+  try {
+    const identifier = getAuthIdentifier(req);
+    if (!identifier) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { addressId } = req.params;
+    const updated = await updateUserAddress(identifier, addressId, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'User or address not found' });
+    }
+
+    res.json({
+      success: true,
+      user: updated,
+      addresses: updated.addresses,
+      message: 'Address updated successfully in database',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update address', message: (error as Error).message });
+  }
+});
+
+/**
+ * 11. DELETE DELIVERY ADDRESS
+ */
+router.delete('/address/:addressId', async (req: Request, res: Response) => {
+  try {
+    const identifier = getAuthIdentifier(req);
+    if (!identifier) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { addressId } = req.params;
+    const updated = await deleteUserAddress(identifier, addressId);
+    if (!updated) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      user: updated,
+      addresses: updated.addresses,
+      message: 'Address removed successfully from database',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete address', message: (error as Error).message });
   }
 });
 

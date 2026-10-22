@@ -6,11 +6,13 @@ import {
   getEmailConfig,
 } from '../services/email';
 
+import { ContactModel } from '../models/Contact';
+
 const router = Router();
 
 /**
  * POST /api/contact
- * Submit inquiry from contact page
+ * Submit inquiry from contact page and save to database
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -23,26 +25,55 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    await sendContactInquiryEmail({
+    // 1. Save to MongoDB Database
+    let savedContact = null;
+    try {
+      savedContact = await ContactModel.create({
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email ? email.trim() : undefined,
+        inquiryType: inquiryType || 'General Inquiry',
+        message: message.trim(),
+        status: 'new',
+      });
+    } catch (dbErr) {
+      console.warn('Could not save contact inquiry to DB:', (dbErr as Error).message);
+    }
+
+    // 2. Send email notification asynchronously
+    sendContactInquiryEmail({
       name: name.trim(),
       phone: phone.trim(),
       email: email ? email.trim() : undefined,
       inquiryType: inquiryType || 'General Inquiry',
       message: message.trim(),
-    });
+    }).catch((err) => console.error('Failed to send contact inquiry email:', err));
 
     res.json({
       success: true,
-      message: 'Inquiry received and notification sent to showroom desk successfully',
+      data: savedContact,
+      message: 'Inquiry received and saved to database successfully',
     });
   } catch (error) {
     const err = error as Error;
     console.error('Failed to handle contact inquiry:', err);
-    // Still return a helpful response so the user UI doesn't crash
     res.status(500).json({
       error: 'Failed to process inquiry',
       message: err.message,
     });
+  }
+});
+
+/**
+ * GET /api/contact
+ * List inquiries from database (for admin / showroom desk)
+ */
+router.get('/', async (_req: Request, res: Response) => {
+  try {
+    const inquiries = await ContactModel.find().sort({ createdAt: -1 }).limit(100).lean();
+    res.json({ success: true, inquiries });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch inquiries', message: (error as Error).message });
   }
 });
 
