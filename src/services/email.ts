@@ -16,6 +16,7 @@ export interface EmailConfig {
 }
 
 export function getEmailConfig(): EmailConfig {
+  dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
   const smtpPass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
   const smtpUser = (process.env.SMTP_USER || '').trim();
   const smtpHost = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
@@ -33,6 +34,15 @@ export function getEmailConfig(): EmailConfig {
 
 export function getTransporter() {
   const config = getEmailConfig();
+  if (config.smtpHost === 'smtp.gmail.com' || config.smtpUser.includes('@gmail.com')) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: config.smtpUser,
+        pass: config.smtpPass,
+      },
+    });
+  }
   return nodemailer.createTransport({
     host: config.smtpHost,
     port: config.smtpPort,
@@ -40,9 +50,6 @@ export function getTransporter() {
     auth: {
       user: config.smtpUser,
       pass: config.smtpPass,
-    },
-    tls: {
-      rejectUnauthorized: false,
     },
   });
 }
@@ -72,51 +79,54 @@ export async function verifyEmailTransporter(): Promise<{ success: boolean; mess
 
 /**
  * Common HTML wrapper with Kochuvila Agencies brand styling
+ * (100% table-based inline styles for maximum email client & Gmail inbox deliverability)
  */
-function wrapHtmlEmail(title: string, bodyContent: string): string {
+function wrapHtmlEmail(title: string, bodyContent: string, recipientEmail?: string): string {
   const config = getEmailConfig();
-  return `
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-      body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; color: #1e293b; }
-      .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
-      .header { background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); color: #ffffff; padding: 28px 24px; text-align: center; }
-      .header h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
-      .header p { margin: 6px 0 0 0; font-size: 13px; color: #93c5fd; }
-      .content { padding: 32px 28px; line-height: 1.6; }
-      .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 12px; color: #64748b; }
-      .otp-box { background: #eff6ff; border: 2px dashed #3b82f6; border-radius: 12px; padding: 18px; text-align: center; margin: 24px 0; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #1d4ed8; }
-      .card { background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; padding: 16px; margin: 16px 0; }
-      .button { display: inline-block; background: #2563eb; color: #ffffff !important; padding: 12px 28px; border-radius: 8px; font-weight: 600; text-decoration: none; margin-top: 16px; }
-      .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; background: #dbeafe; color: #1e40af; }
-      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-      th { text-align: left; padding: 8px; font-size: 12px; color: #64748b; border-bottom: 1px solid #e2e8f0; }
-      td { padding: 10px 8px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1>Kochuvila Agencies</h1>
-        <p>Premium Home Appliances & Teakwood Furniture • Kerala</p>
-      </div>
-      <div class="content">
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+</head>
+<body style="margin: 0; padding: 24px 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 14px rgba(0,0,0,0.03);">
+    
+    <!-- Showroom Brand Header -->
+    <tr>
+      <td align="center" style="background-color: #06121e; padding: 26px 20px; text-align: center;">
+        <div style="font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+          KOCHUVILA AGENCIES
+        </div>
+        <div style="font-size: 12px; color: #93c5fd; margin-top: 4px; font-weight: 500;">
+          Home Appliances &amp; Teakwood Furniture • Kerala
+        </div>
+      </td>
+    </tr>
+
+    <!-- Main Message Body -->
+    <tr>
+      <td style="padding: 32px 28px; line-height: 1.6; font-size: 14px; color: #334155;">
         ${bodyContent}
-      </div>
-      <div class="footer">
-        <p>Kochuvila Agencies, Near Pangode Junction, Trivandrum 695609 | Kallara 695608</p>
-        <p>Helpline: +91 97451 11141 | Email: ${config.smtpUser || 'kochuvilapgd1141@gmail.com'}</p>
-        <p style="margin-top: 8px; color: #94a3b8;">© ${new Date().getFullYear()} Kochuvila Agencies. All rights reserved.</p>
-      </div>
-    </div>
-  </body>
-  </html>
-  `;
+      </td>
+    </tr>
+
+    <!-- Business & Regulatory Footer (Prevents spam classification) -->
+    <tr>
+      <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 22px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
+        <p style="margin: 0 0 3px 0; font-weight: 700; color: #334155;">Kochuvila Agencies</p>
+        <p style="margin: 0 0 3px 0;">Near Pangode Junction, Trivandrum 695609 | Kallara 695608, Kerala, India</p>
+        <p style="margin: 0 0 8px 0;">Helpline: +91 97451 11141 | Support: ${config.smtpUser}</p>
+        <p style="margin: 0; color: #94a3b8; font-size: 10px;">
+          This is an automated account security notification${recipientEmail ? ` sent to ${recipientEmail}` : ''}.
+        </p>
+      </td>
+    </tr>
+
+  </table>
+</body>
+</html>`;
 }
 
 /**
@@ -125,41 +135,75 @@ function wrapHtmlEmail(title: string, bodyContent: string): string {
 export async function sendOtpEmail(to: string, otp: string, purpose: 'login' | 'recovery' = 'login') {
   const config = getEmailConfig();
   const isRecovery = purpose === 'recovery';
+
+  // Natural transactional subject lines that deliver straight to Primary Inbox
   const subject = isRecovery
-    ? `Your Password Reset Code: ${otp} - Kochuvila Agencies`
-    : `Your Login Verification Code: ${otp} - Kochuvila Agencies`;
+    ? `Your Kochuvila Agencies password reset code is ${otp}`
+    : `Your Kochuvila Agencies verification code is ${otp}`;
+
+  const text = `Hello,
+
+Your verification code for Kochuvila Agencies is: ${otp}
+
+Please enter this 6-digit code on the website to complete your sign in. This code is valid for 10 minutes.
+
+If you did not request this code, you can safely ignore this email.
+
+---
+Kochuvila Agencies
+Near Pangode Junction, Trivandrum 695609 | Kallara 695608, Kerala
+Showroom Helpline: +91 97451 11141
+Email: ${config.smtpUser}
+`;
 
   const html = wrapHtmlEmail(
     subject,
     `
-    <h2 style="margin-top: 0; color: #0f172a; font-size: 20px;">
-      ${isRecovery ? 'Password Reset Verification' : 'Verification Code'}
-    </h2>
-    <p>Hello,</p>
-    <p>
+    <p style="margin: 0 0 16px 0; font-size: 15px; font-weight: 600; color: #0f172a;">
+      Hello,
+    </p>
+    <p style="margin: 0 0 20px 0; font-size: 14px; color: #334155; line-height: 1.6;">
       ${
         isRecovery
-          ? 'We received a request to reset your password for your Kochuvila Agencies account. Use the verification code below to proceed.'
-          : 'Use the one-time code below to verify your email address and securely log into your Kochuvila Agencies account.'
+          ? 'We received a request to reset your password. Use the verification code below to set a new password:'
+          : 'Use the one-time verification code below to verify your email and sign in to your Kochuvila Agencies account:'
       }
     </p>
 
-    <div class="otp-box">${otp}</div>
+    <!-- Copyable OTP Box with user-select -->
+    <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 24px auto;">
+      <tr>
+        <td align="center" style="background-color: #f0f7ff; border: 1.5px solid #0097F3; border-radius: 12px; padding: 18px 36px; text-align: center;">
+          <div style="font-size: 11px; font-weight: 700; color: #017ed0; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;">
+            One-Time Code
+          </div>
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Courier New', Courier, monospace; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #06121e; user-select: all; -webkit-user-select: all; -moz-user-select: all; line-height: 1; padding: 4px 0;">
+            ${otp}
+          </div>
+        </td>
+      </tr>
+    </table>
 
-    <p style="color: #64748b; font-size: 13px;">
-      ⏱️ This one-time code is valid for <strong>10 minutes</strong>. Never share this code with anyone.
+    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin: 20px 0;">
+      <p style="color: #475569; font-size: 12px; margin: 0; line-height: 1.5;">
+        This code expires in <strong>10 minutes</strong>. For your security, do not share this code with anyone.
+      </p>
+    </div>
+
+    <p style="color: #94a3b8; font-size: 12px; margin: 16px 0 0 0;">
+      If you did not request this verification code, you can safely disregard this message.
     </p>
-    <p style="color: #64748b; font-size: 13px;">
-      If you did not request this code, you can safely ignore this email.
-    </p>
-    `
+    `,
+    to
   );
 
   const t = getTransporter();
   return t.sendMail({
-    from: config.emailFrom,
+    from: `"Kochuvila Agencies" <${config.smtpUser}>`,
     to,
+    replyTo: `"Kochuvila Support" <${config.smtpUser}>`,
     subject,
+    text,
     html,
   });
 }

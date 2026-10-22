@@ -15,7 +15,7 @@ interface MemoryStore {
   brands: Brand[];
   orders: Order[];
   coupons: Coupon[];
-  users: User[];
+  users: (User & { passwordHash?: string })[];
   isSeeded: boolean;
 }
 
@@ -520,11 +520,144 @@ export async function validateCoupon(code: string, cartTotal: number): Promise<{
 }
 
 // USER & AUTH
+export async function findUserByEmail(email: string): Promise<User | null> {
+  const cleanEmail = email.toLowerCase().trim();
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const userDoc = await UserModel.findOne({ email: cleanEmail });
+      if (userDoc) {
+        return {
+          _id: userDoc._id.toString(),
+          name: userDoc.name,
+          email: userDoc.email,
+          phone: userDoc.phone,
+          role: userDoc.role,
+          addresses: userDoc.addresses ? JSON.parse(JSON.stringify(userDoc.addresses)) : [],
+          createdAt: userDoc.createdAt ? userDoc.createdAt.toISOString() : undefined,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('DB error findUserByEmail:', (err as Error).message);
+  }
+
+  const memUser = mem.users.find((u) => u.email.toLowerCase() === cleanEmail);
+  if (memUser) {
+    const { passwordHash: _, ...safeUser } = memUser;
+    return safeUser;
+  }
+  return null;
+}
+
+export async function createUser(data: {
+  name: string;
+  email: string;
+  password?: string;
+  phone?: string;
+  role?: 'customer' | 'admin';
+}): Promise<User> {
+  const cleanEmail = data.email.toLowerCase().trim();
+  const passwordHash = data.password
+    ? await bcrypt.hash(data.password, 10)
+    : await bcrypt.hash('Kochuvila@Otp2026', 10);
+  const role = data.role || (cleanEmail.includes('admin') ? 'admin' : 'customer');
+  const phone = data.phone || '+91 97451 11141';
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const existing = await UserModel.findOne({ email: cleanEmail });
+      if (existing) {
+        if (data.name) existing.name = data.name.trim();
+        if (data.password) existing.passwordHash = passwordHash;
+        if (data.phone) existing.phone = data.phone;
+        await existing.save();
+        return {
+          _id: existing._id.toString(),
+          name: existing.name,
+          email: existing.email,
+          phone: existing.phone,
+          role: existing.role,
+          addresses: existing.addresses ? JSON.parse(JSON.stringify(existing.addresses)) : [],
+          createdAt: existing.createdAt ? existing.createdAt.toISOString() : undefined,
+        };
+      }
+
+      const created = await UserModel.create({
+        name: data.name.trim(),
+        email: cleanEmail,
+        passwordHash,
+        phone,
+        role,
+        addresses: [],
+      });
+      return {
+        _id: created._id.toString(),
+        name: created.name,
+        email: created.email,
+        phone: created.phone,
+        role: created.role,
+        addresses: [],
+        createdAt: created.createdAt ? created.createdAt.toISOString() : undefined,
+      };
+    }
+  } catch (err) {
+    console.warn('DB error creating user:', (err as Error).message);
+  }
+
+  // Memory Store fallback
+  const existingIdx = mem.users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+  if (existingIdx !== -1) {
+    if (data.name) mem.users[existingIdx].name = data.name.trim();
+    if (data.password) mem.users[existingIdx].passwordHash = passwordHash;
+    if (data.phone) mem.users[existingIdx].phone = data.phone;
+    const { passwordHash: _, ...safeUser } = mem.users[existingIdx];
+    return safeUser;
+  }
+
+  const newUser: User & { passwordHash: string } = {
+    _id: `usr-${Date.now()}`,
+    name: data.name.trim(),
+    email: cleanEmail,
+    passwordHash,
+    role,
+    phone,
+    addresses: [],
+    createdAt: new Date().toISOString(),
+  };
+  mem.users.push(newUser);
+  const { passwordHash: _, ...safeUser } = newUser;
+  return safeUser;
+}
+
+export async function updateUserPassword(email: string, newPassword: string): Promise<boolean> {
+  const cleanEmail = email.toLowerCase().trim();
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const res = await UserModel.updateOne({ email: cleanEmail }, { $set: { passwordHash } });
+      if (res.modifiedCount > 0) return true;
+    }
+  } catch (err) {
+    console.warn('DB error updating password:', (err as Error).message);
+  }
+
+  const memUser = mem.users.find((u) => u.email.toLowerCase() === cleanEmail);
+  if (memUser) {
+    memUser.passwordHash = passwordHash;
+    return true;
+  }
+  return false;
+}
+
 export async function authenticateUser(email: string, password: string): Promise<User | null> {
-  const adminEmail = (process.env.ADMIN_DEFAULT_EMAIL || 'admin@kochuvila.com').toLowerCase();
+  const cleanEmail = email.toLowerCase().trim();
+  const adminEmail = (process.env.ADMIN_DEFAULT_EMAIL || 'admin@kochuvila.com').toLowerCase().trim();
   const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'KochuvilaAdmin@2026';
 
-  if (email.toLowerCase() === adminEmail && password === adminPassword) {
+  if (cleanEmail === adminEmail && password === adminPassword) {
     const adminUser = mem.users.find((u) => u.role === 'admin') || {
       _id: 'usr-admin-01',
       name: 'Kochuvila Administrator',
@@ -538,7 +671,7 @@ export async function authenticateUser(email: string, password: string): Promise
   try {
     const conn = await connectToDatabase();
     if (conn) {
-      const userDoc = await UserModel.findOne({ email: email.toLowerCase() });
+      const userDoc = await UserModel.findOne({ email: cleanEmail });
       if (userDoc) {
         const matches = await bcrypt.compare(password, userDoc.passwordHash);
         if (matches) {
@@ -549,12 +682,23 @@ export async function authenticateUser(email: string, password: string): Promise
             phone: userDoc.phone,
             role: userDoc.role,
             addresses: userDoc.addresses ? JSON.parse(JSON.stringify(userDoc.addresses)) : [],
+            createdAt: userDoc.createdAt ? userDoc.createdAt.toISOString() : undefined,
           };
         }
       }
     }
   } catch (err) {
     console.warn('DB error authenticating user:', (err as Error).message);
+  }
+
+  // Memory fallback
+  const memUser = mem.users.find((u) => u.email.toLowerCase() === cleanEmail);
+  if (memUser && memUser.passwordHash) {
+    const matches = await bcrypt.compare(password, memUser.passwordHash);
+    if (matches) {
+      const { passwordHash: _, ...safeUser } = memUser;
+      return safeUser;
+    }
   }
 
   return null;
