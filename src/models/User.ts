@@ -6,7 +6,7 @@ export interface IUserDocument {
   email: string;
   passwordHash: string;
   phone?: string;
-  role: 'customer' | 'admin';
+  role: 'customer' | 'admin' | 'manager';
   addresses: {
     fullName: string;
     phone: string;
@@ -42,7 +42,7 @@ const UserSchema = new Schema<IUserDocument>(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
     passwordHash: { type: String, required: true },
     phone: { type: String },
-    role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
+    role: { type: String, enum: ['customer', 'admin', 'manager'], default: 'customer' },
     addresses: [AddressSchema],
   },
   { timestamps: true }

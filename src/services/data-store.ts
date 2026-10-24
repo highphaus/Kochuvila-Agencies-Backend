@@ -1,4 +1,4 @@
-import { Product, Category, Brand, Order, Coupon, User, UserAddress } from '../types';
+import { Product, Category, Brand, Order, Coupon, User, UserAddress, Role, ProductReview } from '../types';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES, SAMPLE_BRANDS, SAMPLE_COUPONS } from '../data/sample-data';
 import { connectToDatabase } from '../config/db';
 import { ProductModel } from '../models/Product';
@@ -6,6 +6,8 @@ import { OrderModel } from '../models/Order';
 import { CategoryModel } from '../models/Category';
 import { BrandModel } from '../models/Brand';
 import { UserModel } from '../models/User';
+import { CouponModel } from '../models/Coupon';
+import { ReviewModel } from '../models/Review';
 import bcrypt from 'bcryptjs';
 
 // In-memory fallback cache to allow 100% functionality with or without MongoDB running
@@ -16,6 +18,7 @@ interface MemoryStore {
   orders: Order[];
   coupons: Coupon[];
   users: (User & { passwordHash?: string })[];
+  reviews: ProductReview[];
   isSeeded: boolean;
 }
 
@@ -91,6 +94,47 @@ if (!global.memoryStore) {
         role: 'admin',
         phone: '+91 94470 00000',
         createdAt: new Date().toISOString(),
+      },
+    ],
+    reviews: [
+      {
+        _id: 'rev-01',
+        productId: 'prod-app-01',
+        productName: 'LG 655L Frost-Free Inverter Side-by-Side Refrigerator',
+        userName: 'Mathew Thomas',
+        userEmail: 'mathew.t@example.com',
+        rating: 5,
+        headline: 'Outstanding quality and very smooth delivery in Kerala',
+        comment:
+          'Purchased from Kochuvila Agencies. The delivery team was punctual, unboxed the unit with utmost care, and gave a complete demonstration. Genuine product with manufacturer warranty.',
+        verifiedPurchase: true,
+        createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
+      },
+      {
+        _id: 'rev-02',
+        productId: 'prod-app-02',
+        productName: 'Sony Bravia 55-inch 4K Google TV',
+        userName: 'Priya Rajagopal',
+        userEmail: 'priya.r@example.com',
+        rating: 5,
+        headline: 'Worth every rupee, exceeded our expectations',
+        comment:
+          'Visited their local showroom to check it out before ordering online. The finish, build quality, and performance are first-rate. Very happy with the purchase.',
+        verifiedPurchase: true,
+        createdAt: new Date(Date.now() - 86400000 * 38).toISOString(),
+      },
+      {
+        _id: 'rev-03',
+        productId: 'prod-fur-01',
+        productName: 'Kerala Heritage Teakwood 6-Seater Dining Set',
+        userName: 'Arun Varma',
+        userEmail: 'arun.v@example.com',
+        rating: 4,
+        headline: 'Great product, prompt delivery and support',
+        comment:
+          'Got it delivered within 2 days to Kochi. Excellent packaging and 0% EMI process through credit card was completely hassle-free.',
+        verifiedPurchase: true,
+        createdAt: new Date(Date.now() - 86400000 * 54).toISOString(),
       },
     ],
     isSeeded: true,
@@ -229,23 +273,49 @@ export async function getProducts(filters?: {
   };
 }
 
-export async function getProductBySlug(slug: string): Promise<Product | null> {
+export async function getProductBySlug(slugOrId: string): Promise<Product | null> {
   try {
     const conn = await connectToDatabase();
     if (conn) {
-      const prod = await ProductModel.findOne({ slug }).lean();
+      const prod = await ProductModel.findOne({
+        $or: [{ slug: slugOrId }, { _id: slugOrId }],
+      }).lean();
       if (prod) return JSON.parse(JSON.stringify(prod));
     }
   } catch (err) {
     console.warn('DB error on getProductBySlug:', (err as Error).message);
   }
-  const match = mem.products.find((p) => p.slug === slug || p._id === slug);
+  const match = mem.products.find((p) => p.slug === slugOrId || p._id === slugOrId);
   return match ? JSON.parse(JSON.stringify(match)) : null;
 }
 
 export async function createOrUpdateProduct(productData: Partial<Product>): Promise<Product> {
+  let existing: any = null;
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      if (productData._id) {
+        existing = await ProductModel.findOne({ $or: [{ _id: productData._id }, { slug: productData._id }] }).lean();
+      }
+      if (!existing && productData.slug) {
+        existing = await ProductModel.findOne({ slug: productData.slug }).lean();
+      }
+    }
+  } catch (err) {
+    console.warn('DB check error during createOrUpdateProduct:', (err as Error).message);
+  }
+
+  if (!existing) {
+    existing = mem.products.find(
+      (p) =>
+        (productData._id && (p._id === productData._id || p.slug === productData._id)) ||
+        (productData.slug && p.slug === productData.slug)
+    );
+  }
+
   const slug =
     productData.slug ||
+    existing?.slug ||
     productData.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') ||
     `prod-${Date.now()}`;
 
@@ -254,45 +324,58 @@ export async function createOrUpdateProduct(productData: Partial<Product>): Prom
       ? Math.round(((productData.mrp - productData.price) / productData.mrp) * 100)
       : productData.discountPercentage || 0;
 
+  const targetId = existing?._id || productData._id || `prod-${Date.now()}`;
+
   const fullData: Product = {
-    _id: productData._id || `prod-${Date.now()}`,
-    name: productData.name || 'Unnamed Product',
+    _id: targetId,
+    name: productData.name || existing?.name || 'Unnamed Product',
     slug,
-    brand: productData.brand || 'Kochuvila Selected',
-    category: productData.category || 'appliances',
-    subcategory: productData.subcategory || 'general',
-    description: productData.description || '',
-    images: productData.images && productData.images.length > 0
-      ? productData.images
-      : ['https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=1000&q=80'],
-    mrp: productData.mrp || 0,
-    price: productData.price || 0,
+    brand: productData.brand || existing?.brand || 'Kochuvila Selected',
+    category: productData.category || existing?.category || 'appliances',
+    subcategory: productData.subcategory || existing?.subcategory || 'general',
+    description: productData.description !== undefined ? productData.description : (existing?.description || ''),
+    images:
+      productData.images && productData.images.length > 0
+        ? productData.images
+        : (existing?.images && existing.images.length > 0
+            ? existing.images
+            : ['https://images.unsplash.com/photo-1584992236310-6edddc08acff?auto=format&fit=crop&w=1000&q=80']),
+    mrp: productData.mrp !== undefined ? productData.mrp : (existing?.mrp || 0),
+    price: productData.price !== undefined ? productData.price : (existing?.price || 0),
     discountPercentage,
-    stock: productData.stock !== undefined ? productData.stock : 10,
-    rating: productData.rating || 5.0,
-    reviewCount: productData.reviewCount || 0,
-    sku: productData.sku || `SKU-${Date.now()}`,
-    warranty: productData.warranty || '1 Year Manufacturer Warranty',
-    features: productData.features || [],
-    specifications: productData.specifications || [],
-    dimensions: productData.dimensions,
-    weight: productData.weight,
-    deliveryInfo: productData.deliveryInfo || 'Doorstep delivery across Kerala.',
-    tags: productData.tags || [],
-    isFeatured: !!productData.isFeatured,
-    isDeal: !!productData.isDeal,
-    dealTag: productData.dealTag,
-    isPublished: productData.isPublished !== undefined ? productData.isPublished : true,
-    createdAt: productData.createdAt || new Date().toISOString(),
+    stock: productData.stock !== undefined ? productData.stock : (existing?.stock !== undefined ? existing.stock : 10),
+    inStock:
+      productData.inStock !== undefined
+        ? productData.inStock
+        : (productData.stock !== undefined ? productData.stock > 0 : (existing?.inStock !== undefined ? existing.inStock : true)),
+    variants: productData.variants || existing?.variants || [],
+    rating: productData.rating !== undefined ? productData.rating : (existing?.rating || 5.0),
+    reviewCount: productData.reviewCount !== undefined ? productData.reviewCount : (existing?.reviewCount || 0),
+    sku: productData.sku || existing?.sku || `SKU-${Date.now().toString().slice(-6)}`,
+    energyRating: productData.energyRating || existing?.energyRating,
+    capacity: productData.capacity || existing?.capacity,
+    warranty: productData.warranty || existing?.warranty || '1 Year Manufacturer Warranty',
+    features: productData.features || existing?.features || [],
+    specifications: productData.specifications || existing?.specifications || [],
+    dimensions: productData.dimensions || existing?.dimensions,
+    weight: productData.weight || existing?.weight,
+    deliveryInfo: productData.deliveryInfo || existing?.deliveryInfo || 'Doorstep delivery across Kerala.',
+    tags: productData.tags || existing?.tags || [],
+    isFeatured: productData.isFeatured !== undefined ? !!productData.isFeatured : (existing?.isFeatured || false),
+    isDeal: productData.isDeal !== undefined ? !!productData.isDeal : (existing?.isDeal || false),
+    dealTag: productData.dealTag || existing?.dealTag,
+    isPublished: productData.isPublished !== undefined ? productData.isPublished : (existing?.isPublished !== undefined ? existing.isPublished : true),
+    createdAt: existing?.createdAt || productData.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
   try {
     const conn = await connectToDatabase();
     if (conn) {
+      const { _id, ...rest } = fullData;
       const updated = await ProductModel.findOneAndUpdate(
-        { $or: [{ _id: fullData._id }, { slug: fullData.slug }] },
-        fullData,
+        { $or: [{ _id }, { slug: fullData.slug }] },
+        { $set: rest, $setOnInsert: { _id } },
         { upsert: true, new: true }
       ).lean();
       if (updated) return JSON.parse(JSON.stringify(updated));
@@ -310,22 +393,129 @@ export async function createOrUpdateProduct(productData: Partial<Product>): Prom
   return fullData;
 }
 
-export async function deleteProduct(id: string): Promise<boolean> {
+export async function deleteProduct(idOrSlug: string): Promise<boolean> {
+  let dbDeleted = false;
   try {
     const conn = await connectToDatabase();
     if (conn) {
-      await ProductModel.deleteOne({ _id: id });
+      const res = await ProductModel.deleteOne({ $or: [{ _id: idOrSlug }, { slug: idOrSlug }] });
+      if (res && res.deletedCount > 0) dbDeleted = true;
     }
   } catch (err) {
     console.warn('DB error deleting product:', (err as Error).message);
   }
-  const idx = mem.products.findIndex((p) => p._id === id);
+  const idx = mem.products.findIndex((p) => p._id === idOrSlug || p.slug === idOrSlug);
   if (idx >= 0) {
     mem.products.splice(idx, 1);
     return true;
   }
-  return false;
+  return dbDeleted;
 }
+
+// REVIEWS REPOSITORY
+export async function getReviews(productId?: string): Promise<ProductReview[]> {
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const filter: Record<string, any> = {};
+      if (productId) {
+        filter.productId = productId;
+      }
+      const reviews = await ReviewModel.find(filter).sort({ createdAt: -1 }).lean();
+      if (reviews && reviews.length > 0) {
+        return JSON.parse(JSON.stringify(reviews));
+      }
+    }
+  } catch (err) {
+    console.warn('DB error fetching reviews:', (err as Error).message);
+  }
+  if (productId) {
+    return mem.reviews.filter((r) => r.productId === productId);
+  }
+  return [...mem.reviews];
+}
+
+export async function getReviewById(id: string): Promise<ProductReview | null> {
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const rev = await ReviewModel.findById(id).lean();
+      if (rev) return JSON.parse(JSON.stringify(rev));
+    }
+  } catch (err) {
+    console.warn('DB error fetching review by ID:', (err as Error).message);
+  }
+  const match = mem.reviews.find((r) => r._id === id);
+  return match ? JSON.parse(JSON.stringify(match)) : null;
+}
+
+export async function createOrUpdateReview(
+  data: Partial<ProductReview>
+): Promise<ProductReview> {
+  const targetId = data._id || `rev-${Date.now()}`;
+  const fullReview: ProductReview = {
+    _id: targetId,
+    productId: data.productId || 'prod-app-01',
+    productName: data.productName || 'Kochuvila Selected Item',
+    userName: data.userName || 'Verified Customer',
+    userEmail: data.userEmail || '',
+    rating: data.rating !== undefined ? Number(data.rating) : 5,
+    headline: data.headline || 'Excellent Product',
+    comment: data.comment || '',
+    verifiedPurchase: data.verifiedPurchase !== false,
+    createdAt: data.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const { _id, ...rest } = fullReview;
+      const updated = await ReviewModel.findOneAndUpdate(
+        { _id },
+        { $set: rest, $setOnInsert: { _id } },
+        { upsert: true, new: true }
+      ).lean();
+      if (updated) {
+        // Also keep memory store in sync
+        const idx = mem.reviews.findIndex((r) => r._id === targetId);
+        if (idx >= 0) mem.reviews[idx] = JSON.parse(JSON.stringify(updated));
+        else mem.reviews.unshift(JSON.parse(JSON.stringify(updated)));
+        return JSON.parse(JSON.stringify(updated));
+      }
+    }
+  } catch (err) {
+    console.warn('DB error saving review:', (err as Error).message);
+  }
+
+  const idx = mem.reviews.findIndex((r) => r._id === fullReview._id);
+  if (idx >= 0) {
+    mem.reviews[idx] = fullReview;
+  } else {
+    mem.reviews.unshift(fullReview);
+  }
+  return fullReview;
+}
+
+export async function deleteReview(id: string): Promise<boolean> {
+  let dbDeleted = false;
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const res = await ReviewModel.deleteOne({ _id: id });
+      if (res && res.deletedCount > 0) dbDeleted = true;
+    }
+  } catch (err) {
+    console.warn('DB error deleting review:', (err as Error).message);
+  }
+  const idx = mem.reviews.findIndex((r) => r._id === id);
+  if (idx >= 0) {
+    mem.reviews.splice(idx, 1);
+    return true;
+  }
+  return dbDeleted;
+}
+
 
 // ORDERS REPOSITORY
 export async function getOrders(): Promise<Order[]> {
@@ -433,34 +623,96 @@ export async function createOrder(orderData: Partial<Order>): Promise<Order> {
 
 export async function updateOrderStatus(
   orderId: string,
-  newStatus: Order['orderStatus'],
-  notes?: string
+  newStatusOrPayload: Order['orderStatus'] | {
+    status?: Order['orderStatus'];
+    orderStatus?: Order['orderStatus'];
+    notes?: string;
+    courierService?: string;
+    trackingId?: string;
+    trackingUrl?: string;
+  },
+  legacyNotes?: string
 ): Promise<Order | null> {
   const timestamp = new Date().toISOString();
+  let status: Order['orderStatus'] | undefined;
+  let notes: string | undefined = legacyNotes;
+  let courierService: string | undefined;
+  let trackingId: string | undefined;
+  let trackingUrl: string | undefined;
+
+  if (typeof newStatusOrPayload === 'string') {
+    status = newStatusOrPayload;
+  } else if (newStatusOrPayload && typeof newStatusOrPayload === 'object') {
+    status = newStatusOrPayload.status || newStatusOrPayload.orderStatus;
+    notes = newStatusOrPayload.notes || legacyNotes;
+    courierService = newStatusOrPayload.courierService;
+    trackingId = newStatusOrPayload.trackingId;
+    trackingUrl = newStatusOrPayload.trackingUrl;
+  }
+
+  // Auto-generate courier tracking URL if not explicitly provided
+  if (trackingId && !trackingUrl && courierService) {
+    const cs = courierService.toLowerCase();
+    if (cs.includes('delhivery')) {
+      trackingUrl = `https://www.delhivery.com/track/package/${encodeURIComponent(trackingId)}`;
+    } else if (cs.includes('blue dart') || cs.includes('bluedart')) {
+      trackingUrl = `https://www.bluedart.com/tracking?trackNumber=${encodeURIComponent(trackingId)}`;
+    } else if (cs.includes('dtdc')) {
+      trackingUrl = `https://www.dtdc.in/tracking/shipment-tracking.asp?strCnno=${encodeURIComponent(trackingId)}`;
+    } else if (cs.includes('speed post') || cs.includes('india post')) {
+      trackingUrl = `https://www.indiapost.gov.in/_layouts/15/dpt.cept.tracking/trackconsignment.aspx`;
+    }
+  }
+
+  const setFields: Record<string, any> = { updatedAt: timestamp };
+  if (status) setFields.orderStatus = status;
+  if (courierService !== undefined) setFields.courierService = courierService;
+  if (trackingId !== undefined) setFields.trackingId = trackingId;
+  if (trackingUrl !== undefined) setFields.trackingUrl = trackingUrl;
+
+  const timelineNote =
+    notes ||
+    (courierService && trackingId
+      ? `Dispatched via ${courierService} (Tracking ID: ${trackingId})`
+      : status
+      ? `Order status updated to ${status}`
+      : 'Order tracking details updated');
+
   try {
     const conn = await connectToDatabase();
     if (conn) {
+      const updateQuery: any = { $set: setFields };
+      if (status || courierService || trackingId) {
+        updateQuery.$push = {
+          timeline: {
+            status: status || 'Shipped',
+            timestamp,
+            notes: timelineNote,
+          },
+        };
+      }
+
       const updated = await OrderModel.findOneAndUpdate(
         { $or: [{ _id: orderId }, { orderNumber: orderId }] },
-        {
-          $set: { orderStatus: newStatus },
-          $push: { timeline: { status: newStatus, timestamp, notes } },
-        },
+        updateQuery,
         { new: true }
       ).lean();
       if (updated) return JSON.parse(JSON.stringify(updated));
     }
   } catch (err) {
-    console.warn('DB error updating order status:', (err as Error).message);
+    console.warn('DB error updating order status/tracking:', (err as Error).message);
   }
 
   const order = mem.orders.find((o) => o._id === orderId || o.orderNumber === orderId);
   if (order) {
-    order.orderStatus = newStatus;
+    if (status) order.orderStatus = status;
+    if (courierService !== undefined) order.courierService = courierService;
+    if (trackingId !== undefined) order.trackingId = trackingId;
+    if (trackingUrl !== undefined) order.trackingUrl = trackingUrl;
     order.timeline.push({
-      status: newStatus,
+      status: (status || order.orderStatus) as any,
       timestamp,
-      notes: notes || `Order status updated to ${newStatus}`,
+      notes: timelineNote,
     });
     return JSON.parse(JSON.stringify(order));
   }
@@ -495,11 +747,40 @@ export async function getBrands(): Promise<Brand[]> {
 }
 
 export async function getCoupons(): Promise<Coupon[]> {
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const dbCoupons = await CouponModel.find().sort({ createdAt: -1 }).lean();
+      if (dbCoupons && dbCoupons.length > 0) return JSON.parse(JSON.stringify(dbCoupons));
+    }
+  } catch (err) {
+    console.warn('DB error fetching coupons:', (err as Error).message);
+  }
   return [...mem.coupons];
 }
 
-export async function validateCoupon(code: string, cartTotal: number): Promise<{ valid: boolean; discount: number; message: string }> {
-  const match = mem.coupons.find((c) => c.code.toUpperCase() === code.toUpperCase() && c.isActive);
+export async function validateCoupon(
+  code: string,
+  cartTotal: number
+): Promise<{ valid: boolean; discount: number; message: string }> {
+  const cleanCode = code.toUpperCase().trim();
+  let match: Coupon | null = null;
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const cDoc = await CouponModel.findOne({ code: cleanCode, isActive: true }).lean();
+      if (cDoc) match = JSON.parse(JSON.stringify(cDoc));
+    }
+  } catch (err) {
+    console.warn('DB error validating coupon:', (err as Error).message);
+  }
+
+  if (!match) {
+    const memMatch = mem.coupons.find((c) => c.code.toUpperCase() === cleanCode && c.isActive);
+    if (memMatch) match = memMatch;
+  }
+
   if (!match) {
     return { valid: false, discount: 0, message: 'Invalid or expired coupon code' };
   }
@@ -510,13 +791,138 @@ export async function validateCoupon(code: string, cartTotal: number): Promise<{
       message: `Minimum order of ₹${match.minOrderAmount.toLocaleString('en-IN')} required for this coupon`,
     };
   }
-  const calcDiscount = Math.round((cartTotal * match.discountPercentage) / 100);
-  const discount = Math.min(calcDiscount, match.maxDiscountAmount);
+
+  let discount = 0;
+  if (match.discountType === 'flat' && match.discountAmount) {
+    discount = Math.min(match.discountAmount, cartTotal);
+  } else {
+    const calcDiscount = Math.round((cartTotal * (match.discountPercentage || 10)) / 100);
+    discount = Math.min(calcDiscount, match.maxDiscountAmount || 5000);
+  }
+
   return {
     valid: true,
     discount,
     message: `Coupon applied! You save ₹${discount.toLocaleString('en-IN')}`,
   };
+}
+
+export async function createOrUpdateCoupon(couponData: Partial<Coupon>): Promise<Coupon> {
+  const code = (couponData.code || `OFFER${Math.floor(100 + Math.random() * 900)}`).toUpperCase().trim();
+  const fullCoupon: Coupon = {
+    _id: couponData._id || `cpn-${Date.now()}`,
+    code,
+    discountPercentage: couponData.discountPercentage || 0,
+    discountAmount: couponData.discountAmount || 0,
+    discountType: couponData.discountType || (couponData.discountAmount ? 'flat' : 'percentage'),
+    maxDiscountAmount: couponData.maxDiscountAmount || 5000,
+    minOrderAmount: couponData.minOrderAmount || 0,
+    validUntil: couponData.validUntil || new Date(Date.now() + 30 * 86400000).toISOString(),
+    isActive: couponData.isActive !== undefined ? couponData.isActive : true,
+    description:
+      couponData.description ||
+      (couponData.discountAmount
+        ? `₹${couponData.discountAmount} Flat Off on minimum purchase of ₹${couponData.minOrderAmount || 0}`
+        : `${couponData.discountPercentage || 10}% Off on store purchases`),
+    createdAt: couponData.createdAt || new Date().toISOString(),
+  };
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const { _id, ...rest } = fullCoupon;
+      const updated = await CouponModel.findOneAndUpdate(
+        { code },
+        { $set: rest, $setOnInsert: { _id } },
+        { upsert: true, new: true }
+      ).lean();
+      if (updated) return JSON.parse(JSON.stringify(updated));
+    }
+  } catch (err) {
+    console.warn('DB error saving coupon:', (err as Error).message);
+  }
+
+  const idx = mem.coupons.findIndex((c) => c.code.toUpperCase() === code);
+  if (idx !== -1) {
+    mem.coupons[idx] = fullCoupon;
+  } else {
+    mem.coupons.push(fullCoupon);
+  }
+  return fullCoupon;
+}
+
+export async function deleteCoupon(idOrCode: string): Promise<boolean> {
+  const clean = idOrCode.toUpperCase().trim();
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      await CouponModel.deleteOne({ $or: [{ _id: idOrCode }, { code: clean }] });
+    }
+  } catch (err) {
+    console.warn('DB error deleting coupon:', (err as Error).message);
+  }
+  mem.coupons = mem.coupons.filter((c) => c._id !== idOrCode && c.code.toUpperCase() !== clean);
+  return true;
+}
+
+export async function getAllUsers(): Promise<User[]> {
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const users = await UserModel.find({}, { passwordHash: 0 }).sort({ createdAt: -1 }).lean();
+      if (users && users.length > 0) {
+        return users.map((u) => ({
+          _id: u._id.toString(),
+          name: u.name,
+          email: u.email,
+          phone: u.phone,
+          role: u.role,
+          addresses: u.addresses ? JSON.parse(JSON.stringify(u.addresses)) : [],
+          createdAt: u.createdAt ? u.createdAt.toISOString() : undefined,
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('DB error getAllUsers:', (err as Error).message);
+  }
+  return mem.users.map(({ passwordHash: _, ...safe }) => safe);
+}
+
+export async function updateUserRole(userIdOrEmail: string, role: Role): Promise<User | null> {
+  const clean = userIdOrEmail.trim();
+  const cleanEmail = clean.toLowerCase();
+
+  try {
+    const conn = await connectToDatabase();
+    if (conn) {
+      const updated = await UserModel.findOneAndUpdate(
+        { $or: [{ _id: clean }, { email: cleanEmail }] },
+        { $set: { role } },
+        { new: true }
+      ).lean();
+      if (updated) {
+        return {
+          _id: updated._id.toString(),
+          name: updated.name,
+          email: updated.email,
+          phone: updated.phone,
+          role: updated.role,
+          addresses: updated.addresses ? JSON.parse(JSON.stringify(updated.addresses)) : [],
+          createdAt: updated.createdAt ? updated.createdAt.toISOString() : undefined,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('DB error updateUserRole:', (err as Error).message);
+  }
+
+  const memUser = mem.users.find((u) => u._id === clean || u.email.toLowerCase() === cleanEmail);
+  if (memUser) {
+    memUser.role = role;
+    const { passwordHash: _, ...safe } = memUser;
+    return safe;
+  }
+  return null;
 }
 
 // USER & AUTH
@@ -1148,6 +1554,15 @@ export async function seedDatabase(): Promise<{
           { upsert: true, new: true }
         );
       }
+      // 6. Seed Coupons
+      for (const cpn of SAMPLE_COUPONS) {
+        const { _id, ...cpnRest } = cpn;
+        await CouponModel.findOneAndUpdate(
+          { code: cpn.code.toUpperCase() },
+          { $set: cpnRest, $setOnInsert: { _id } },
+          { upsert: true, new: true }
+        );
+      }
     }
   } catch (err) {
     console.warn('DB seed error, memory store refreshed:', (err as Error).message);
@@ -1158,11 +1573,12 @@ export async function seedDatabase(): Promise<{
   mem.brands = JSON.parse(JSON.stringify(SAMPLE_BRANDS));
   mem.orders = JSON.parse(JSON.stringify(sampleOrders));
   mem.users = JSON.parse(JSON.stringify(sampleUsers));
+  mem.coupons = JSON.parse(JSON.stringify(SAMPLE_COUPONS));
   mem.isSeeded = true;
 
   return {
     success: true,
-    message: 'Database & memory store successfully seeded with complete retail catalog, users, and orders.',
+    message: 'Database & memory store successfully seeded with complete retail catalog, users, orders, and coupons.',
     counts: {
       products: mem.products.length,
       categories: mem.categories.length,

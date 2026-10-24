@@ -45,6 +45,9 @@ export interface IOrderDocument {
     | 'Out for Delivery'
     | 'Delivered'
     | 'Cancelled';
+  courierService?: string;
+  trackingId?: string;
+  trackingUrl?: string;
   timeline: {
     status: string;
     timestamp: Date;
@@ -116,6 +119,9 @@ const OrderSchema = new Schema<IOrderDocument>(
       ],
       default: 'Order Placed',
     },
+    courierService: { type: String },
+    trackingId: { type: String, index: true },
+    trackingUrl: { type: String },
     timeline: [
       {
         status: { type: String, required: true },

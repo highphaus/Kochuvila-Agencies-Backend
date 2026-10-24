@@ -143,14 +143,9 @@ router.post('/send-otp', async (req: Request, res: Response) => {
     let emailError: string | null = null;
 
     try {
-      if (process.env.SMTP_PASS && process.env.SMTP_PASS.trim()) {
-        const info = await sendOtpEmail(cleanEmail, otp, validPurpose === 'recovery' ? 'recovery' : 'login');
-        emailSent = true;
-        console.log(`[EMAIL SUCCESS] OTP email sent to ${cleanEmail}. MessageId:`, info.messageId);
-      } else {
-        emailError = 'SMTP_PASS is not configured in backend/.env';
-        console.warn(`[EMAIL NOTICE] SMTP_PASS is empty in backend/.env. Could not deliver email to ${cleanEmail}.`);
-      }
+      const info = await sendOtpEmail(cleanEmail, otp, validPurpose === 'recovery' ? 'recovery' : 'login');
+      emailSent = true;
+      console.log(`[EMAIL SUCCESS] OTP email dispatched to ${cleanEmail}. Provider: ${(info as any)?.provider || 'smtp'}, MessageId:`, (info as any)?.messageId);
     } catch (err) {
       emailError = (err as Error).message;
       console.error(`[EMAIL ERROR] Failed to send email to ${cleanEmail}:`, emailError);
@@ -256,13 +251,9 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
     let emailSent = false;
     let emailError: string | null = null;
     try {
-      if (process.env.SMTP_PASS && process.env.SMTP_PASS.trim()) {
-        const info = await sendOtpEmail(cleanEmail, otp, 'recovery');
-        emailSent = true;
-        console.log(`[EMAIL SUCCESS] Recovery OTP sent to ${cleanEmail}. MessageId:`, info.messageId);
-      } else {
-        emailError = 'SMTP_PASS is not configured in backend/.env';
-      }
+      const info = await sendOtpEmail(cleanEmail, otp, 'recovery');
+      emailSent = true;
+      console.log(`[EMAIL SUCCESS] Recovery OTP dispatched to ${cleanEmail}. Provider: ${(info as any)?.provider || 'smtp'}, MessageId:`, (info as any)?.messageId);
     } catch (err) {
       emailError = (err as Error).message;
       console.error('[EMAIL ERROR] Failed to send recovery email:', err);

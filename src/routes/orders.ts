@@ -61,18 +61,25 @@ router.post('/', async (req: Request, res: Response) => {
 
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
-    const { status, notes } = req.body;
-    if (!status) {
-      return res.status(400).json({ error: 'Status is required' });
+    const { status, orderStatus, notes, courierService, trackingId, trackingUrl } = req.body;
+    if (!status && !orderStatus && courierService === undefined && trackingId === undefined) {
+      return res.status(400).json({ error: 'Order status or tracking information is required' });
     }
 
-    const updated = await updateOrderStatus(req.params.id, status, notes);
+    const updated = await updateOrderStatus(req.params.id, {
+      status: status || orderStatus,
+      notes,
+      courierService,
+      trackingId,
+      trackingUrl,
+    });
+
     if (!updated) {
       return res.status(404).json({ error: 'Order not found' });
     }
     res.json(updated);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update order status', message: (error as Error).message });
+    res.status(500).json({ error: 'Failed to update order status or tracking details', message: (error as Error).message });
   }
 });
 

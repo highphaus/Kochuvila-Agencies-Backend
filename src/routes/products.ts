@@ -75,7 +75,13 @@ router.post('/', async (req: Request, res: Response) => {
 
 router.put('/:slug', async (req: Request, res: Response) => {
   try {
-    const updated = await createOrUpdateProduct({ ...req.body, slug: req.params.slug });
+    const existing = await getProductBySlug(req.params.slug);
+    const updated = await createOrUpdateProduct({
+      ...(existing || {}),
+      ...req.body,
+      _id: existing?._id || req.body._id,
+      slug: req.body.slug || existing?.slug || (req.params.slug.startsWith('prod-') ? undefined : req.params.slug),
+    });
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update product', message: (error as Error).message });
@@ -85,13 +91,29 @@ router.put('/:slug', async (req: Request, res: Response) => {
 router.delete('/:slug', async (req: Request, res: Response) => {
   try {
     const product = await getProductBySlug(req.params.slug);
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-    await deleteProduct(product._id);
+    const idToDelete = product ? product._id : req.params.slug;
+    await deleteProduct(idToDelete);
     res.json({ success: true, message: 'Product deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete product', message: (error as Error).message });
+  }
+});
+
+router.patch('/:slug/stock', async (req: Request, res: Response) => {
+  try {
+    const { inStock, stock } = req.body;
+    const product = await getProductBySlug(req.params.slug);
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    const updated = await createOrUpdateProduct({
+      ...product,
+      inStock: inStock !== undefined ? inStock : (stock !== undefined ? stock > 0 : product.inStock),
+      stock: stock !== undefined ? stock : (inStock === false ? 0 : (product.stock || 5)),
+    });
+    res.json({ success: true, product: updated });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update stock', message: (error as Error).message });
   }
 });
 

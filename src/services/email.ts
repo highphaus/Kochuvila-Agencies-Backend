@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
 // Load .env explicitly
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -13,6 +14,7 @@ export interface EmailConfig {
   smtpPass: string;
   emailFrom: string;
   adminEmail: string;
+  googleScriptOtpUrl?: string;
 }
 
 export function getEmailConfig(): EmailConfig {
@@ -29,7 +31,25 @@ export function getEmailConfig(): EmailConfig {
   const emailFrom = process.env.EMAIL_FROM || `Kochuvila Agencies <${smtpUser}>`;
   const adminEmail = (process.env.ADMIN_NOTIFICATION_EMAIL || smtpUser).trim();
 
-  return { smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, emailFrom, adminEmail };
+  let googleScriptOtpUrl = (
+    process.env.GOOGLE_SCRIPT_OTP_URL ||
+    process.env.OTP_SCRIPT_URL ||
+    process.env.GOOGLE_SCRIPT_URL ||
+    ''
+  ).trim();
+
+  // Automatic fallback scanner in case raw script URL is present in backend/.env
+  if (!googleScriptOtpUrl) {
+    try {
+      const rawEnv = fs.readFileSync(path.resolve(__dirname, '../../.env'), 'utf8');
+      const match = rawEnv.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s\r\n]+/);
+      if (match) {
+        googleScriptOtpUrl = match[0].trim();
+      }
+    } catch {}
+  }
+
+  return { smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, emailFrom, adminEmail, googleScriptOtpUrl };
 }
 
 export function getTransporter() {
@@ -130,13 +150,72 @@ function wrapHtmlEmail(title: string, bodyContent: string, recipientEmail?: stri
 }
 
 /**
+ * 0. Send OTP via Google Apps Script Web App
+ */
+export async function sendOtpViaGoogleScript(
+  to: string,
+  otp: string,
+  purpose: 'login' | 'recovery' = 'login'
+): Promise<{ messageId: string; provider: string; result?: any }> {
+  const config = getEmailConfig();
+  const scriptUrl = config.googleScriptOtpUrl;
+  if (!scriptUrl) {
+    throw new Error('Google Apps Script OTP URL is not configured');
+  }
+
+  const isRecovery = purpose === 'recovery';
+  const subject = isRecovery
+    ? `Your Kochuvila Agencies password reset code is ${otp}`
+    : `Your Kochuvila Agencies verification code is ${otp}`;
+
+  const res = await fetch(scriptUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to,
+      email: to,
+      recipient: to,
+      otp,
+      purpose,
+      subject,
+    }),
+  });
+
+  const responseText = await res.text();
+  if (responseText.includes('Exception:') || responseText.includes('Failed to send email')) {
+    throw new Error(`Google Apps Script error: ${responseText.replace(/<[^>]+>/g, '').trim()}`);
+  }
+
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch {}
+
+  console.log(`[GOOGLE SCRIPT OTP SUCCESS] Verification code [${otp}] dispatched to ${to} via Google Apps Script.`);
+  return {
+    messageId: `gas-${Date.now()}`,
+    provider: 'google-apps-script',
+    result: parsed,
+  };
+}
+
+/**
  * 1. Send OTP Verification Email
  */
 export async function sendOtpEmail(to: string, otp: string, purpose: 'login' | 'recovery' = 'login') {
   const config = getEmailConfig();
-  const isRecovery = purpose === 'recovery';
 
-  // Natural transactional subject lines that deliver straight to Primary Inbox
+  // 1. Prioritize Google Apps Script endpoint if configured in backend/.env
+  if (config.googleScriptOtpUrl) {
+    try {
+      return await sendOtpViaGoogleScript(to, otp, purpose);
+    } catch (gasErr) {
+      console.warn(`[OTP GOOGLE SCRIPT FALLBACK] Google Apps Script failed: ${(gasErr as Error).message}. Attempting Nodemailer SMTP...`);
+    }
+  }
+
+  // 2. Nodemailer SMTP (fallback or primary when script is unset)
+  const isRecovery = purpose === 'recovery';
   const subject = isRecovery
     ? `Your Kochuvila Agencies password reset code is ${otp}`
     : `Your Kochuvila Agencies verification code is ${otp}`;

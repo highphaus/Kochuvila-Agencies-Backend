@@ -32,9 +32,31 @@ export interface IProductDocument {
   isDeal: boolean;
   dealTag?: string;
   isPublished: boolean;
+  inStock?: boolean;
+  variants?: {
+    _id?: string;
+    name: string;
+    sku?: string;
+    price: number;
+    mrp?: number;
+    stock: number;
+    inStock?: boolean;
+    image?: string;
+  }[];
   createdAt: Date;
   updatedAt: Date;
 }
+
+const VariantSchema = new Schema({
+  _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
+  name: { type: String, required: true },
+  sku: { type: String },
+  price: { type: Number, required: true },
+  mrp: { type: Number },
+  stock: { type: Number, default: 0 },
+  inStock: { type: Boolean, default: true },
+  image: { type: String },
+});
 
 const ProductSchema = new Schema<IProductDocument>(
   {
@@ -50,6 +72,8 @@ const ProductSchema = new Schema<IProductDocument>(
     price: { type: Number, required: true, min: 0 },
     discountPercentage: { type: Number, default: 0 },
     stock: { type: Number, required: true, default: 0 },
+    inStock: { type: Boolean, default: true },
+    variants: [VariantSchema],
     rating: { type: Number, default: 5 },
     reviewCount: { type: Number, default: 0 },
     sku: { type: String, required: true, unique: true },

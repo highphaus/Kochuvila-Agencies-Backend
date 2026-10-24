@@ -1,4 +1,4 @@
-export type Role = 'customer' | 'admin';
+export type Role = 'customer' | 'admin' | 'manager';
 
 export interface UserAddress {
   _id?: string;
@@ -33,6 +33,17 @@ export interface SpecificationGroup {
   items: SpecificationItem[];
 }
 
+export interface ProductVariant {
+  _id?: string;
+  name: string;
+  sku?: string;
+  price: number;
+  mrp?: number;
+  stock: number;
+  inStock?: boolean;
+  image?: string;
+}
+
 export interface Product {
   _id: string;
   name: string;
@@ -46,6 +57,8 @@ export interface Product {
   price: number;
   discountPercentage: number;
   stock: number;
+  inStock?: boolean;
+  variants?: ProductVariant[];
   rating: number;
   reviewCount: number;
   sku: string;
@@ -140,6 +153,9 @@ export interface Order {
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
+  courierService?: string;
+  trackingId?: string;
+  trackingUrl?: string;
   timeline: OrderTimeline[];
   notes?: string;
   createdAt: string;
@@ -150,8 +166,27 @@ export interface Coupon {
   _id: string;
   code: string;
   discountPercentage: number;
+  discountAmount?: number;
+  discountType?: 'percentage' | 'flat';
   maxDiscountAmount: number;
   minOrderAmount: number;
   validUntil: string;
   isActive: boolean;
+  description?: string;
+  createdAt?: string;
 }
+
+export interface ProductReview {
+  _id: string;
+  productId: string;
+  productName?: string;
+  userName: string;
+  userEmail?: string;
+  rating: number;
+  headline: string;
+  comment: string;
+  verifiedPurchase: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+

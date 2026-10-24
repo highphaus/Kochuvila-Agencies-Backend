@@ -29,8 +29,8 @@ export async function connectToDatabase(): Promise<boolean> {
   connectionPromise = (async () => {
     try {
       await mongoose.connect(uri, {
-        serverSelectionTimeoutMS: 2000,
-        connectTimeoutMS: 2000,
+        serverSelectionTimeoutMS: 6000,
+        connectTimeoutMS: 6000,
       });
 
       if (mongoose.connection.readyState === 1) {

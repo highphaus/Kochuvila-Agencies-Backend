@@ -11,17 +11,38 @@ import couponsRouter from './routes/coupons';
 import authRouter from './routes/auth';
 import seedRouter from './routes/seed';
 import contactRouter from './routes/contact';
+import adminRouter from './routes/admin';
+import reviewsRouter from './routes/reviews';
 import { verifyEmailTransporter } from './services/email';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
+
+// Production Allowed Origins
+const allowedOrigins = [
+  'https://www.kochuvilaagencies.com',
+  'https://kochuvilaagencies.com',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
 
 // Middleware
 app.use(
   cors({
-    origin: '*',
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
+        origin.includes('kochuvilaagencies.com')
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Fallback so valid client domains aren't blocked
+    },
     credentials: true,
   })
 );
@@ -101,6 +122,8 @@ app.use('/api/coupons', couponsRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/seed', seedRouter);
 app.use('/api/contact', contactRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/reviews', reviewsRouter);
 
 // Start server
 async function startServer() {
@@ -115,8 +138,8 @@ async function startServer() {
     }
   });
 
-  app.listen(PORT, () => {
-    console.log(`🚀 Kochuvila Agencies Backend running at http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Kochuvila Agencies Backend running on port ${PORT}`);
     console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
     console.log(`📦 Products API: http://localhost:${PORT}/api/products`);
     console.log(`📬 Contact & Email API: http://localhost:${PORT}/api/contact`);
