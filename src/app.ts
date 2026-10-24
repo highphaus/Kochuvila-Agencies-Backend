@@ -127,7 +127,16 @@ app.use('/api/reviews', reviewsRouter);
 
 // Start server
 async function startServer() {
-  await connectToDatabase();
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Kochuvila Agencies Backend running on port ${PORT}`);
+    console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`📦 Products API: http://localhost:${PORT}/api/products`);
+    console.log(`📬 Contact & Email API: http://localhost:${PORT}/api/contact`);
+  });
+
+  connectToDatabase().catch((err) => {
+    console.warn('DB background connection notice:', err.message);
+  });
 
   // Verify Nodemailer Email Transporter
   verifyEmailTransporter().then((res) => {
@@ -136,13 +145,6 @@ async function startServer() {
     } else {
       console.warn(`⚠️ Nodemailer SMTP Warning: ${res.message}`);
     }
-  });
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Kochuvila Agencies Backend running on port ${PORT}`);
-    console.log(`📡 Health Check: http://localhost:${PORT}/api/health`);
-    console.log(`📦 Products API: http://localhost:${PORT}/api/products`);
-    console.log(`📬 Contact & Email API: http://localhost:${PORT}/api/contact`);
   });
 }
 

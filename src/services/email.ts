@@ -31,6 +31,9 @@ export function getEmailConfig(): EmailConfig {
   const emailFrom = process.env.EMAIL_FROM || `Kochuvila Agencies <${smtpUser}>`;
   const adminEmail = (process.env.ADMIN_NOTIFICATION_EMAIL || smtpUser).trim();
 
+  const DEFAULT_GOOGLE_SCRIPT_OTP_URL =
+    'https://script.google.com/macros/s/AKfycbwZ0CLLef-MzBbcNuhj3WaACwUDa7hQn-iM7bQvQIVZoz2w_hMF3PKB2OXqfuz04zAO6w/exec';
+
   let googleScriptOtpUrl = (
     process.env.GOOGLE_SCRIPT_OTP_URL ||
     process.env.OTP_SCRIPT_URL ||
@@ -47,6 +50,11 @@ export function getEmailConfig(): EmailConfig {
         googleScriptOtpUrl = match[0].trim();
       }
     } catch {}
+  }
+
+  // Always fallback to the official deployed Google Apps Script URL so Git deployments never fail
+  if (!googleScriptOtpUrl) {
+    googleScriptOtpUrl = DEFAULT_GOOGLE_SCRIPT_OTP_URL;
   }
 
   return { smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, emailFrom, adminEmail, googleScriptOtpUrl };
